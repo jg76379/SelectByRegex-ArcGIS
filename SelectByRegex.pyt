@@ -98,22 +98,6 @@ class SelectByRegex(object):
                              parameters[3].valueAsText, parameters[4].valueAsText)
         return
 
-    def feature_class_to_pandas_data_frame(self, feature_class, field_list):
-        """
-        Load data into a Pandas Data Frame for subsequent analysis.
-        :param feature_class: Input ArcGIS Feature Class.
-        :param field_list: Fields for input.
-        :return: Pandas DataFrame object.
-        """
-        return DataFrame(
-            arcpy.da.FeatureClassToNumPyArray(
-                in_table=feature_class,
-                field_names=field_list,
-                skip_nulls=False,
-                null_value=-99999
-            )
-        )
-
     def select_by_regex(self, layer, unique_id, selection_field, regex, non_matching):
         """
         Selects fields in layer that DO NOT match the regular expression
@@ -150,3 +134,20 @@ class SelectByRegex(object):
                 sqlQuery = f'{sqlQuery}{val})'
 
         arcpy.SelectLayerByAttribute_management(layer, 'NEW_SELECTION', sqlQuery)
+
+    @staticmethod
+    def feature_class_to_pandas_data_frame(feature_class, field_list):
+        """
+        Load data into a Pandas Data Frame for subsequent analysis.
+        :param feature_class: Input ArcGIS Feature Class.
+        :param field_list: Fields for input.
+        :return: Pandas DataFrame object.
+        """
+        return DataFrame(
+            arcpy.da.FeatureClassToNumPyArray(
+                in_table=feature_class,
+                field_names=field_list,
+                skip_nulls=False,
+                null_value=-99999
+            )
+        )
