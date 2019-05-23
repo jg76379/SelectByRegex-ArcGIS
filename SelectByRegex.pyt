@@ -144,8 +144,18 @@ class SelectByRegex(object):
         arcpy.SelectLayerByAttribute_management(layer, 'NEW_SELECTION', sqlQuery)
 
         if out_workspace:
-            out_featureclass = os.path.join(out_workspace,
-                                            layer + '_regexSelection')
+            arcpy.env.workspace = out_workspace
+            out_feature_name = layer + '_' + selection_field + '_regexSelection'
+            workspace_features = arcpy.ListFeatureClasses()
+            print(workspace_features)
+            if out_feature_name in workspace_features:
+                count = 1
+                new_out_feature_name = out_feature_name
+                while new_out_feature_name in workspace_features:
+                    new_out_feature_name = out_feature_name + str(count)
+                    count += 1
+                out_feature_name = new_out_feature_name
+            out_featureclass = os.path.join(out_workspace, out_feature_name)
             arcpy.CopyFeatures_management(in_features=layer,
                                           out_feature_class=out_featureclass)
 
