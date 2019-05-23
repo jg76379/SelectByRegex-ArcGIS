@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import re
 
 import arcpy
@@ -73,7 +74,14 @@ class SelectByRegex(object):
 
         checkbox.value = "true"
 
-        parameters = [layer, uniqueIDField, selectionField, regex, checkbox]
+        out_workspace = arcpy.Parameter(
+            displayName="Out Workspace",
+            name="OutWorkspace",
+            datatype="DEWorkspace",
+            parameterType="Optional",
+            direction="Input")
+
+        parameters = [layer, uniqueIDField, selectionField, regex, checkbox, out_workspace]
 
         return parameters
 
@@ -95,10 +103,10 @@ class SelectByRegex(object):
     def execute(self, parameters, messages):
         """The source code of the tool."""
         self.select_by_regex(parameters[0].valueAsText, parameters[1].valueAsText, parameters[2].valueAsText,
-                             parameters[3].valueAsText, parameters[4].valueAsText)
+                             parameters[3].valueAsText, parameters[4].valueAsText, parameters[5].valueAsText)
         return
 
-    def select_by_regex(self, layer, unique_id, selection_field, regex, non_matching):
+    def select_by_regex(self, layer, unique_id, selection_field, regex, non_matching, out_workspace=None):
         """
         Selects fields in layer that DO NOT match the regular expression
         :param layer: layer to apply the selection to
@@ -134,6 +142,12 @@ class SelectByRegex(object):
                 sqlQuery = f'{sqlQuery}{val})'
 
         arcpy.SelectLayerByAttribute_management(layer, 'NEW_SELECTION', sqlQuery)
+
+        if out_workspace:
+            out_featureclass = os.path.join(out_workspace,
+                                            layer + '_regexSelection')
+            arcpy.CopyFeatures_management(in_features=layer,
+                                          out_feature_class=out_featureclass)
 
     @staticmethod
     def feature_class_to_pandas_data_frame(feature_class, field_list):
