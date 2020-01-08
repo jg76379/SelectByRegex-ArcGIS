@@ -3,13 +3,6 @@ import os
 import re
 
 import arcpy
-import pandas as pd
-from pandas import DataFrame
-
-# Suppress warnings about Match groups from pandas.Series.str.contains
-# If this warning is not suppressed ArcPro will show that the tool has failed
-import warnings
-warnings.filterwarnings("ignore", 'This pattern has match groups')
 
 
 class Toolbox(object):
@@ -72,7 +65,7 @@ class SelectByRegex(object):
             parameterType="Required",
             direction="Input")
 
-        checkbox.value = "true"
+        checkbox.value = "false"
 
         out_workspace = arcpy.Parameter(
             displayName="Out Workspace",
@@ -98,6 +91,13 @@ class SelectByRegex(object):
     def updateMessages(self, parameters):
         """Modify the messages created by internal validation for each tool
         parameter.  This method is called after internal validation."""
+        # Check if regular expression string can be compiled to a valid regular expression
+        if parameters[3].value is not None:
+            regex = parameters[3].valueAsText
+            try:
+                re.compile(regex)
+            except Exception as e:
+                parameters[3].setErrorMessage("Invalid Regular Expression")
         return
 
     def execute(self, parameters, messages):
@@ -108,40 +108,41 @@ class SelectByRegex(object):
 
     def select_by_regex(self, layer, unique_id, selection_field, regex, non_matching, out_workspace=None):
         """
-        Selects fields in layer that DO NOT match the regular expression
+        Selects fields in layer that match the regular expression
         :param layer: layer to apply the selection to
         :param unique_id: ObjectID or other unique ID
         :param selection_field: field that the regex will search in
         :param regex: a regular expression to apply to the search
         :param non_matching: if "true" then records that do not match the regex will be selected, if false then matching
+        :param out_workspace: arcpy.DEWorkspace | None. The workspace to create the output feature class
         records will be selected.
-
-        :return:
+        :return: None
         """
 
         field_list = [unique_id, selection_field]
-        layer_DF = self.feature_class_to_pandas_data_frame(layer, field_list)
-        match = layer_DF[
-            layer_DF[selection_field].str.contains(regex, flags=re.IGNORECASE, regex=True, na=False, case=True)]
-
-        merge = pd.merge(layer_DF, match, how='outer', on=unique_id)
-
-        # Query the null records (ones that did not match the regex)
-        y_field = selection_field + '_y'
-        merge = merge.query(f"{y_field} != {y_field}")
+        try:
+            pattern = re.compile(regex)
+        except Exception as e:
+            arcpy.AddError("Invalid Regular Expression")
+            raise arcpy.ExecuteError
+        where_exp = f"{selection_field} IS NOT NULL"
+        oid_list = []
+        with arcpy.da.SearchCursor(layer, field_list, where_exp) as s_cursor:
+            for row in s_cursor:
+                if pattern.search(row[1]):
+                    oid_list.append(row[0])
 
         if non_matching == "true":
-            sqlQuery = unique_id + " IN ("
+            sql_query = unique_id + " NOT IN ("
         else:
-            sqlQuery = unique_id + " NOT IN ("
-        oidList = merge[unique_id].tolist()
-        for index, val in enumerate(oidList):
-            if index < (len(oidList) - 1):
-                sqlQuery = f'{sqlQuery}{val},'
+            sql_query = unique_id + " IN ("
+        for index, val in enumerate(oid_list):
+            if index < (len(oid_list) - 1):
+                sql_query = f'{sql_query}{val},'
             else:
-                sqlQuery = f'{sqlQuery}{val})'
+                sql_query = f'{sql_query}{val})'
 
-        arcpy.SelectLayerByAttribute_management(layer, 'NEW_SELECTION', sqlQuery)
+        arcpy.SelectLayerByAttribute_management(layer, 'NEW_SELECTION', sql_query)
 
         if out_workspace:
             arcpy.env.workspace = out_workspace
@@ -158,20 +159,3 @@ class SelectByRegex(object):
             out_featureclass = os.path.join(out_workspace, out_feature_name)
             arcpy.CopyFeatures_management(in_features=layer,
                                           out_feature_class=out_featureclass)
-
-    @staticmethod
-    def feature_class_to_pandas_data_frame(feature_class, field_list):
-        """
-        Load data into a Pandas Data Frame for subsequent analysis.
-        :param feature_class: Input ArcGIS Feature Class.
-        :param field_list: Fields for input.
-        :return: Pandas DataFrame object.
-        """
-        return DataFrame(
-            arcpy.da.FeatureClassToNumPyArray(
-                in_table=feature_class,
-                field_names=field_list,
-                skip_nulls=False,
-                null_value=-99999
-            )
-        )
